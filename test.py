@@ -1,3 +1,4 @@
+import configparser as cp
 import speech_recognition as sr
 import boto3
 import pygame
@@ -8,7 +9,7 @@ import wave
 
 def listenForActivationWord(recognizer, microphone, activationWord, listenTime):
     with microphone as source:
-        print("Listening...")
+        print("Listening for " + listenTime + " seconds ...")
         #audio = recognizer.listen(source, timeout=5)
         audio = recognizer.record(source, duration=listenTime)
 
@@ -32,13 +33,20 @@ def listenForActivationWord(recognizer, microphone, activationWord, listenTime):
     return False
                     
 def main():
+    config = cp.ConfigParser()
+    config.read("homeai.conf")
+
+    keyword = config['common']['keyword'] or "computer"
+    keywordDuration = config['common']['duration'] or 3
+
+    # setup recognizer
     r = sr.Recognizer()
     r.energy_threshold = 100
 
     m = sr.Microphone()
     # print(sr.Microphone.list_microphone_names())
 
-    listenForActivationWord(r, m, "computer", 3)
+    listenForActivationWord(r, m, keyword, keywordDuration)
 
 if __name__ == "__main__":
     # startup_sound()
