@@ -6,7 +6,7 @@ import os
 import openai
 import wave
 
-###### API KEYS #####
+###### API KEYS ######
 openai.api_key = 'xx'
 aws_access_key_id = 'yy'
 aws_access_key_secret = 'zz'
