@@ -34,10 +34,14 @@ def listenForActivationWord(recognizer, microphone, activationWord, listenTime):
                     
 def main():
     config = cp.ConfigParser()
+    config['common'] = {
+        'keyword': 'computer',
+        'duration': 3
+    }
     config.read("homeai.conf")
 
-    keyword = config['common']['keyword'] or "computer"
-    keywordDuration = config['common']['duration'] or 3
+    keyword = config['common']['keyword']
+    keywordDuration = config['common']['duration']
 
     # setup recognizer
     r = sr.Recognizer()

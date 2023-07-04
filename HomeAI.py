@@ -7,9 +7,9 @@ import openai
 import wave
 
 ###### API KEYS #####
-openai.api_key = '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'
-aws_access_key_id = 'AKIAZG6R3J2FVHGYUT4K'
-aws_access_key_secret = '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'
+openai.api_key = 'xx'
+aws_access_key_id = 'yy'
+aws_access_key_secret = 'zz'
 ###### ------ #####
 
 ACTIVATION_WORD = "computer"  # replace with your activation word or phrase
