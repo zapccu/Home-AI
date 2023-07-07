@@ -3,15 +3,16 @@ import speech_recognition as sr
 import boto3
 import pygame
 import threading
+import sys
 import os
 import openai
 import wave
 
 def listenForActivationWord(recognizer, microphone, activationWord, listenTime):
     with microphone as source:
-        print("Listening for " + listenTime + " seconds ...")
+        print(f"Listening for {listenTime} seconds ...")
         #audio = recognizer.listen(source, timeout=5)
-        audio = recognizer.record(source, duration=listenTime)
+        audio = recognizer.record(source, duration=int(listenTime))
 
     try:
         result = recognizer.recognize_google(audio)
@@ -20,6 +21,7 @@ def listenForActivationWord(recognizer, microphone, activationWord, listenTime):
         print(words)
 
         if activationWord in words:
+            print("Activation word detected")
             return True
         else:
             print("List of words does not contain activation word " + activationWord)
@@ -33,17 +35,24 @@ def listenForActivationWord(recognizer, microphone, activationWord, listenTime):
     return False
                     
 def main():
+    # Read configuration
+    configFile = "homeaidev.conf" if len(sys.argv) < 2 else sys.argv[1]
     config = cp.ConfigParser()
     config['common'] = {
         'keyword': 'computer',
-        'duration': 3
+        'duration': 3,
+        'audiofiles': os.path.dirname(os.path.realpath(__file__)) + "/audio"
     }
-    config.read("homeai.conf")
+
+    if not os.path.isfile(configFile):
+        print(f"Config file {configFile} not found. Using default values.")
+    else:
+        config.read(configFile)
 
     keyword = config['common']['keyword']
     keywordDuration = config['common']['duration']
 
-    # setup recognizer
+    # Setup recognizer
     r = sr.Recognizer()
     r.energy_threshold = 100
 
