@@ -8,6 +8,37 @@ import os
 import openai
 import wave
 
+CONFIG = cp.ConfigParser()
+
+# ####################################################
+#  Read configuration
+# ####################################################
+def readConfig(configFile):
+    CONFIG['common'] = {
+        'keyword': 'computer',
+        'duration': 3,
+        'audiofiles': os.path.dirname(os.path.realpath(__file__)) + "/audio"
+    }
+    CONFIG['API'] = {
+        'openaiKey': 'none',
+        'awsKeyId': 'none',
+        'awsKeySecret': 'none'
+    }
+
+    if not os.path.isfile(configFile):
+        print(f"Config file {configFile} not found. Using default values.")
+    else:
+        CONFIG.read(configFile)
+
+    if CONFIG['API']['openaiKey'] == 'none':    print("WARN: Open AI API key not configured")
+    if CONFIG['API']['awsKeyId'] == 'none':     print("WARN: AWS key id not configured") 
+    if CONFIG['API']['awsKeySecret'] == 'none': print("WARN: AWS key not configured")
+
+    return
+
+# ####################################################
+#  Listen for activation word
+# ####################################################
 def listenForActivationWord(recognizer, microphone, activationWord, listenTime):
     with microphone as source:
         print(f"Listening for {listenTime} seconds ...")
@@ -37,20 +68,10 @@ def listenForActivationWord(recognizer, microphone, activationWord, listenTime):
 def main():
     # Read configuration
     configFile = "homeaidev.conf" if len(sys.argv) < 2 else sys.argv[1]
-    config = cp.ConfigParser()
-    config['common'] = {
-        'keyword': 'computer',
-        'duration': 3,
-        'audiofiles': os.path.dirname(os.path.realpath(__file__)) + "/audio"
-    }
+    readConfig(configFile)
 
-    if not os.path.isfile(configFile):
-        print(f"Config file {configFile} not found. Using default values.")
-    else:
-        config.read(configFile)
-
-    keyword = config['common']['keyword']
-    keywordDuration = config['common']['duration']
+    keyword = CONFIG['common']['keyword']
+    keywordDuration = CONFIG['common']['duration']
 
     # Setup recognizer
     r = sr.Recognizer()
