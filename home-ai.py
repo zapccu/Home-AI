@@ -15,13 +15,14 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 VERSION = "1.0.0"
 
+# Configuration
 CONFIG = cp.ConfigParser()
 
 # Audio parameters
-SAMPLE_RATE = 16000
-READ_CHUNK = 4096
-CHANNELS = 1            # Mono
-BYTES_PER_SAMPLE = 2
+SAMPLE_RATE      = 16000    # bit/s
+READ_CHUNK       = 4096     # Chunk size for output of audio date >4K
+CHANNELS         = 1        # Mono
+BYTES_PER_SAMPLE = 2        # Bytes per sample
 
 
 # ####################################################
@@ -29,6 +30,7 @@ BYTES_PER_SAMPLE = 2
 # ####################################################
 
 def readConfig(configFile):
+    # Set default parameters
     CONFIG['common'] = {
         'activationWord': 'computer',
         'stopWord': 'beenden',
@@ -46,24 +48,31 @@ def readConfig(configFile):
         'awsKeySecret': 'none'
     }
 
-    if not os.path.isfile(configFile):
-        raise FileNotFoundError(f"Config file {configFile} not found.")
+    try:
+        if not os.path.isfile(configFile):
+            raise FileNotFoundError(f"Config file {configFile} not found.")
 
-    print(f"Reading config file {configFile} ...")
-    CONFIG.read(configFile)
+        print(f"Reading config file {configFile} ...")
+        CONFIG.read(configFile)
 
-    # HomeAI won't work without API credentials
-    if CONFIG['API']['openAIKey'] == 'none':
-        raise ValueError("Open AI API key not configured")
-    if CONFIG['API']['awsKeyId'] == 'none':
-        raise ValueError("AWS key id not configured")
-    if CONFIG['API']['awsKeySecret'] == 'none':
-        raise ValueError("AWS key not configured")
+        # HomeAI won't work without API credentials
+        if CONFIG['API']['openAIKey'] == 'none':
+            raise ValueError("Open AI API key not configured")
+        if CONFIG['API']['awsKeyId'] == 'none':
+            raise ValueError("AWS key id not configured")
+        if CONFIG['API']['awsKeySecret'] == 'none':
+            raise ValueError("AWS key not configured")
 
-    openai.api_key = CONFIG['API']['openAIKey']
+        openai.api_key = CONFIG['API']['openAIKey']
 
-    return True
+        return True
+    
+    except ValueError as err:
+        print(err)
+    except FileNotFoundError as err:
+        print(err)
 
+    return False    
 
 # ####################################################
 #  Listen for activation word
@@ -99,6 +108,7 @@ def listenForActivationWord(recognizer, microphone):
         print("Listening timed out")
 
     return False
+
 
 # ####################################################
 #  Listen for OpenAI command
@@ -147,6 +157,7 @@ def listenForOpenAICommand(recognizer, microphone):
 
     return None
 
+
 # ####################################################
 #  Convert text to speech
 # ####################################################
@@ -193,6 +204,7 @@ def textToSpeech(text):
 
     p.terminate()
 
+
 # ####################################################
 #  Ask Chat GPT
 # ####################################################
@@ -202,6 +214,7 @@ def askChatGPT(prompt):
     response = openai.ChatCompletion.create(model=CONFIG['common']['openAIModel'], messages=messages, temperature=0)
     return response.choices[0].message["content"]
 
+
 # ####################################################
 #  List configured microphones
 # ####################################################
@@ -210,6 +223,7 @@ def listMicrophones():
     print("Available microphone devices are:")
     for index, name in enumerate(sr.Microphone.list_microphone_names()):
         print(f"Microphone with name \"{name}\" found")
+
 
 # ####################################################
 #  Select microphone
@@ -223,6 +237,7 @@ def selectMicrophone(micName):
             print("Selected microphone " + name)
             break
     return deviceIndex
+
 
 # ####################################################
 #  Main function
@@ -244,13 +259,7 @@ def main():
         return
 
     # Read configuration
-    try:
-        readConfig(args.config)
-    except ValueError as err:
-        print(err)
-        return
-    except FileNotFoundError as err:
-        print(err)
+    if not readConfig(args.config):
         return
 
     # Setup microphone
