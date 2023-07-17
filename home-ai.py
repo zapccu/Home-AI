@@ -79,22 +79,24 @@ def readConfig(configFile):
 # ####################################################
 
 def listenForActivationWord(recognizer, microphone):
+
     activationWord = CONFIG['common']['activationWord'].lower()
     listenTime = CONFIG['common']['duration']
 
-    with microphone as source:
-        print(f"Listening for {listenTime} seconds ...")
-        audio = recognizer.listen(source, timeout=float(listenTime))
-        #audio = recognizer.record(source, duration=float(listenTime))
-
+    # Listen
     try:
+        with microphone as source:
+            print(f"Listening for {listenTime} seconds for activation word {activationWord} ...")
+            audio = recognizer.listen(source, timeout=float(listenTime))
+            #audio = recognizer.record(source, duration=float(listenTime))
+
         result = recognizer.recognize_google(audio, language=CONFIG['common']['language'])
         print("Understood " + result)
         words = result.lower().split()
         print(words)
 
-        i = words.index(activationWord)
-        print("Found activation word at position "+str(i))
+        # Next statement will raise a ValueError exception of activation word is not found
+        words.index(activationWord)
 
         return True
 
@@ -117,11 +119,12 @@ def listenForActivationWord(recognizer, microphone):
 def listenForOpenAICommand(recognizer, microphone):
     listenTime = CONFIG['common']['duration']
 
-    with microphone as source:
-        print(f"Listening for query for {listenTime} seconds ...")
-        audio = recognizer.listen(source, timeout=float(listenTime))
-
     try:
+        # Listen
+        with microphone as source:
+            print(f"Listening for query for {listenTime} seconds ...")
+            audio = recognizer.listen(source, timeout=float(listenTime))
+
         # try recognizing the speech in the recording
         # if the speech is unintelligible, `UnknownValueError` will be thrown
         audioData = audio.get_raw_data()
@@ -264,29 +267,37 @@ def main():
 
     # Setup microphone
     deviceIndex = selectMicrophone(args.microphone)
-    microphone = sr.Microphone(sample_rate=SAMPLE_RATE, device_index=deviceIndex)
+    # microphone = sr.Microphone(sample_rate=SAMPLE_RATE, device_index=deviceIndex)
+    microphone = sr.Microphone(sample_rate=SAMPLE_RATE)
 
     # Setup recognizer
     recognizer = sr.Recognizer()
-    recognizer.energy_threshold = CONFIG['common']['energyThreshold']
     recognizer.dynamic_energy_threshold = False
-    recognizer.adjust_for_ambient_noise(microphone, duration=0.5)
+    if int(CONFIG['common']['energyThreshold']) == -1:
+        print("Calibrating energy threshold ...")
+        with microphone as source:
+            recognizer.adjust_for_ambient_noise(source, duration=1)
+        print("Speech recognition energy threshold = " + str(recognizer.energy_threshold))
+    else:
+        recognizer.energy_threshold = CONFIG['common']['energyThreshold']
 
     textToSpeech("Bitte einen Befehl eingeben")
 
     while True:
-        print("OpenAI waiting for input")
-
         if listenForActivationWord(recognizer, microphone):
             print(">>> Ask Open AI")
-            command = listenForOpenAICommand(recognizer, microphone)
 
-            if command:
-                if command == CONFIG['common']['stopWord']:
-                    print("Shutting down Home AI")
+            while True:
+                prompt = listenForOpenAICommand(recognizer, microphone)
+
+                if prompt:
+                    if prompt == CONFIG['common']['stopWord']:
+                        print("Shutting down Home AI")
+                        sys.exit()
+                    else:
+                        response = askChatGPT(prompt)
+                        print(response)
                     break
-                else:
-                    print(command)
 
 if __name__ == "__main__":
     main()
