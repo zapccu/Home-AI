@@ -33,6 +33,7 @@ def readConfig(configFile):
         'activationWord': 'computer',
         'stopWord': 'beenden',
         'duration': 3,
+        'energyThreshold': 100.0,
         'pollyVoiceId': 'Daniel',
         'language': 'de-DE',
         'openAILanguage': 'de',
@@ -74,8 +75,8 @@ def listenForActivationWord(recognizer, microphone):
 
     with microphone as source:
         print(f"Listening for {listenTime} seconds ...")
-        #audio = recognizer.listen(source, timeout=5)
-        audio = recognizer.record(source, duration=int(listenTime))
+        audio = recognizer.listen(source, timeout=float(listenTime))
+        #audio = recognizer.record(source, duration=float(listenTime))
 
     try:
         result = recognizer.recognize_google(audio, language=CONFIG['common']['language'])
@@ -94,6 +95,8 @@ def listenForActivationWord(recognizer, microphone):
         print("Lookup Error: Could not understand audio")
     except sr.UnknownValueError:
         print("Unknown Value Error: No input or unknown value")
+    except sr.WaitTimeoutError:
+        print("Listening timed out")
 
     return False
 
@@ -102,9 +105,11 @@ def listenForActivationWord(recognizer, microphone):
 # ####################################################
 
 def listenForOpenAICommand(recognizer, microphone):
+    listenTime = CONFIG['common']['duration']
+
     with microphone as source:
-        print("Listening for command...")
-        audio = recognizer.listen(source)
+        print(f"Listening for query for {listenTime} seconds ...")
+        audio = recognizer.listen(source, timeout=float(listenTime))
 
     try:
         # try recognizing the speech in the recording
@@ -127,12 +132,15 @@ def listenForOpenAICommand(recognizer, microphone):
         if command == "":
             print("Couldn't understand the command")
 #            play_audio_file('nicht_verstanden.mp3')
-
+            return None
 
         return command
+    
     except sr.UnknownValueError:
         print("Couldn't understand the command")
  #       play_audio_file('nicht_verstanden.mp3')
+    except sr.WaitTimeoutError:
+        print("No input")
 
     return None
 
@@ -248,7 +256,7 @@ def main():
 
     # Setup recognizer
     recognizer = sr.Recognizer()
-    recognizer.energy_threshold = 100
+    recognizer.energy_threshold = CONFIG['common']['energyThreshold']
     recognizer.dynamic_energy_threshold = False
     recognizer.adjust_for_ambient_noise(microphone, duration=0.5)
 
@@ -265,6 +273,8 @@ def main():
                 if command == CONFIG['common']['stopWord']:
                     print("Shutting down Home AI")
                     break
+                else:
+                    print(command)
 
 if __name__ == "__main__":
     main()
