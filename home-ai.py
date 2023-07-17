@@ -20,7 +20,7 @@ CONFIG = cp.ConfigParser()
 # Audio parameters
 SAMPLE_RATE = 16000
 READ_CHUNK = 4096
-CHANNELS = 1
+CHANNELS = 1            # Mono
 BYTES_PER_SAMPLE = 2
 
 
@@ -114,17 +114,20 @@ def listenForOpenAICommand(recognizer, microphone):
     try:
         # try recognizing the speech in the recording
         # if the speech is unintelligible, `UnknownValueError` will be thrown
-        audio_data = audio.get_raw_data()
+        audioData = audio.get_raw_data()
 
         # Save the audio as a WAV file
-        with wave.open("temp_rec.wav", "wb") as wav_file:
-            wav_file.setnchannels(1)  # Mono
-            wav_file.setsampwidth(2)  # 2 bytes per sample
-            wav_file.setframerate(audio.sample_rate)  # Use original sample rate
-            wav_file.writeframes(audio_data)
+        with wave.open("temp_rec.wav", "wb") as wavFile:
+            wavFile.setnchannels(CHANNELS)  # Mono
+            wavFile.setsampwidth(BYTES_PER_SAMPLE)  # 2 bytes per sample
+            wavFile.setframerate(audio.sample_rate)  # Use original sample rate
+            wavFile.writeframes(audioData)
+            wavFile.close()
 
-        audio_file = open("temp_rec.wav", "rb")
-        text = openai.Audio.transcribe("whisper-1", audio_file, language=CONFIG['common']['openAILanguage'])
+        audioFile = open("temp_rec.wav", "rb")
+        text = openai.Audio.transcribe("whisper-1", audioFile, language=CONFIG['common']['openAILanguage'])
+        audioFile.close()
+
         print(text)
         print(text['text'])
         command = text['text']
@@ -194,9 +197,9 @@ def textToSpeech(text):
 #  Ask Chat GPT
 # ####################################################
 
-def askChatGPT(prompt, model="gpt-3.5-turbo"):
+def askChatGPT(prompt):
     messages = [{"role": "user", "content": prompt}]
-    response = openai.ChatCompletion.create(model=model, messages=messages, temperature=0)
+    response = openai.ChatCompletion.create(model=CONFIG['common']['openAIModel'], messages=messages, temperature=0)
     return response.choices[0].message["content"]
 
 # ####################################################
@@ -204,7 +207,7 @@ def askChatGPT(prompt, model="gpt-3.5-turbo"):
 # ####################################################
 
 def listMicrophones():
-    print("Available microphone devices are: ")
+    print("Available microphone devices are:")
     for index, name in enumerate(sr.Microphone.list_microphone_names()):
         print(f"Microphone with name \"{name}\" found")
 
