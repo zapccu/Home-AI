@@ -242,13 +242,15 @@ def main():
         print(err)
         return
 
-    # Setup recognizer
-    recognizer = sr.Recognizer()
-    recognizer.energy_threshold = 100
-
     # Setup microphone
     deviceIndex = selectMicrophone(args.microphone)
     microphone = sr.Microphone(sample_rate=SAMPLE_RATE, device_index=deviceIndex)
+
+    # Setup recognizer
+    recognizer = sr.Recognizer()
+    recognizer.energy_threshold = 100
+    recognizer.dynamic_energy_threshold = False
+    recognizer.adjust_for_ambient_noise(microphone, duration=0.5)
 
     textToSpeech("Bitte einen Befehl eingeben")
 
