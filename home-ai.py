@@ -3,7 +3,7 @@ import argparse
 import speech_recognition as sr
 import boto3
 import pyaudio
-# import pygame
+import pygame
 import threading
 import sys
 import os
@@ -18,61 +18,76 @@ VERSION = "1.0.0"
 # Configuration
 CONFIG = cp.ConfigParser()
 
+# Set default parameters
+CONFIG['common'] = {
+    'activationWord': 'computer',
+    'stopWord': 'beenden',
+    'duration': 3,
+    'energyThreshold': 100.0,
+    'audiofiles': os.path.dirname(os.path.realpath(__file__)) + "/audio"
+}
+CONFIG['AWS'] = {
+    'awsKeyId': 'none',
+    'awsKeySecret': 'none',
+    'region': 'eu-west-2',
+    'pollyVoiceId': 'Daniel',
+    'language': 'de-DE'
+}
+CONFIG['OpenAI'] = {
+    'openAIKey': 'none',
+    'openAILanguage': 'de',
+    'openAIModel': 'gpt-3.5-turbo'
+}
+
 # Audio parameters
 SAMPLE_RATE      = 16000    # bit/s
 READ_CHUNK       = 4096     # Chunk size for output of audio date >4K
 CHANNELS         = 1        # Mono
 BYTES_PER_SAMPLE = 2        # Bytes per sample
 
+logMessage_LEVEL = 0
+
+
+# ####################################################
+#  Write logMessage messages
+# ####################################################
+
+def logMessage(level, message):
+    if level >= logMessage_LEVEL:
+        print(message)
 
 # ####################################################
 #  Read configuration from file
 # ####################################################
 
 def readConfig(configFile):
-    # Set default parameters
-    CONFIG['common'] = {
-        'activationWord': 'computer',
-        'stopWord': 'beenden',
-        'duration': 3,
-        'energyThreshold': 100.0,
-        'pollyVoiceId': 'Daniel',
-        'language': 'de-DE',
-        'openAILanguage': 'de',
-        'openAIModel': 'gpt-3.5-turbo',
-        'audiofiles': os.path.dirname(os.path.realpath(__file__)) + "/audio"
-    }
-    CONFIG['API'] = {
-        'openAIKey': 'none',
-        'awsKeyId': 'none',
-        'awsKeySecret': 'none'
-    }
-
     try:
         if not os.path.isfile(configFile):
             raise FileNotFoundError(f"Config file {configFile} not found.")
 
-        print(f"Reading config file {configFile} ...")
+        logMessage(1, f"Reading config file {configFile} ...")
         CONFIG.read(configFile)
 
         # HomeAI won't work without API credentials
-        if CONFIG['API']['openAIKey'] == 'none':
+        if CONFIG['OpenAI']['openAIKey'] == 'none':
             raise ValueError("Open AI API key not configured")
-        if CONFIG['API']['awsKeyId'] == 'none':
+        if CONFIG['AWS']['awsKeyId'] == 'none':
             raise ValueError("AWS key id not configured")
-        if CONFIG['API']['awsKeySecret'] == 'none':
+        if CONFIG['AWS']['awsKeySecret'] == 'none':
             raise ValueError("AWS key not configured")
 
-        openai.api_key = CONFIG['API']['openAIKey']
+        openai.api_key = CONFIG['OpenAI']['openAIKey']
+        CONFIG['messages']['welcome'].format(activationWord=CONFIG['common']['activationWord'])
 
         return True
     
     except ValueError as err:
-        print(err)
+        logMessage(0, err)
     except FileNotFoundError as err:
-        print(err)
+        logMessage(0, err)
 
     return False    
+
 
 # ####################################################
 #  Listen for activation word
@@ -86,14 +101,14 @@ def listenForActivationWord(recognizer, microphone):
     # Listen
     try:
         with microphone as source:
-            print(f"Listening for {listenTime} seconds for activation word {activationWord} ...")
+            logMessage(2, f"Listening for {listenTime} seconds for activation word {activationWord} ...")
             audio = recognizer.listen(source, timeout=float(listenTime))
             #audio = recognizer.record(source, duration=float(listenTime))
 
         result = recognizer.recognize_google(audio, language=CONFIG['common']['language'])
-        print("Understood " + result)
+        logMessage(2, "Understood " + result)
         words = result.lower().split()
-        print(words)
+        logMessage(2, words)
 
         # Next statement will raise a ValueError exception of activation word is not found
         words.index(activationWord)
@@ -101,13 +116,13 @@ def listenForActivationWord(recognizer, microphone):
         return True
 
     except ValueError:   # Raised by index()
-        print("Value Error: List of words does not contain activation word " + activationWord)
+        logMessage(0, "Value Error: List of words does not contain activation word " + activationWord)
     except LookupError:
-        print("Lookup Error: Could not understand audio")
+        logMessage(0, "Lookup Error: Could not understand audio")
     except sr.UnknownValueError:
-        print("Unknown Value Error: No input or unknown value")
+        logMessage(0, "Unknown Value Error: No input or unknown value")
     except sr.WaitTimeoutError:
-        print("Listening timed out")
+        logMessage(0, "Listening timed out")
 
     return False
 
@@ -118,11 +133,12 @@ def listenForActivationWord(recognizer, microphone):
 
 def listenForOpenAICommand(recognizer, microphone):
     listenTime = CONFIG['common']['duration']
+    recFile = CONFIG['common']['audiofiles'] + "/openairec.wav"
 
     try:
         # Listen
         with microphone as source:
-            print(f"Listening for query for {listenTime} seconds ...")
+            logMessage(2, f"Listening for query for {listenTime} seconds ...")
             audio = recognizer.listen(source, timeout=float(listenTime))
 
         # try recognizing the speech in the recording
@@ -130,82 +146,35 @@ def listenForOpenAICommand(recognizer, microphone):
         audioData = audio.get_raw_data()
 
         # Save the audio as a WAV file
-        with wave.open("temp_rec.wav", "wb") as wavFile:
+        with wave.open(recFile, "wb") as wavFile:
             wavFile.setnchannels(CHANNELS)  # Mono
             wavFile.setsampwidth(BYTES_PER_SAMPLE)  # 2 bytes per sample
             wavFile.setframerate(audio.sample_rate)  # Use original sample rate
             wavFile.writeframes(audioData)
             wavFile.close()
 
-        audioFile = open("temp_rec.wav", "rb")
+        audioFile = open(recFile, "rb")
         text = openai.Audio.transcribe("whisper-1", audioFile, language=CONFIG['common']['openAILanguage'])
         audioFile.close()
 
-        print(text)
-        print(text['text'])
+        logMessage(2, text)
+        logMessage(2, text['text'])
         command = text['text']
 
         if command == "":
-            print("Couldn't understand the command")
+            logMessage(2, "Couldn't understand the command")
 #            play_audio_file('nicht_verstanden.mp3')
             return None
 
         return command
     
     except sr.UnknownValueError:
-        print("Couldn't understand the command")
+        logMessage(0, "Couldn't understand the command")
  #       play_audio_file('nicht_verstanden.mp3')
     except sr.WaitTimeoutError:
-        print("No input")
+        logMessage(0, "No input")
 
     return None
-
-
-# ####################################################
-#  Convert text to speech
-# ####################################################
-
-def textToSpeech(text):
-    session = boto3.Session(
-        aws_access_key_id=CONFIG['API']['awsKeyId'],
-        aws_secret_access_key=CONFIG['API']['awsKeySecret'],
-        region_name='eu-central-1'  # Replace with your desired AWS region
-    )
-    polly = session.client('polly')
-
-    try:
-        # Convert text to PCM stream
-        response = polly.synthesize_speech(
-            Engine='neural',
-            Text=text,
-            OutputFormat='pcm',
-            VoiceId=CONFIG['common']['pollyVoiceId'],
-            LanguageCode=CONFIG['common']['language'],
-            SampleRate=str(SAMPLE_RATE)
-        )
-
-    except (BotoCoreError, ClientError) as error:
-        print(error)
-        sys.exit(-1)
-
-    # Output stream
-    p = pyaudio.PyAudio()
-    stream = p.open(format=p.get_format_from_width(BYTES_PER_SAMPLE),
-        channels=CHANNELS,
-        rate=SAMPLE_RATE,
-        output=True)
-
-    with closing(response["AudioStream"]) as polly_stream:
-        while True:
-            data = polly_stream.read(READ_CHUNK)
-            if data is None or len(data) == 0:
-                break
-            stream.write(data)
-
-    stream.stop_stream()
-    stream.close()
-
-    p.terminate()
 
 
 # ####################################################
@@ -214,8 +183,99 @@ def textToSpeech(text):
 
 def askChatGPT(prompt):
     messages = [{"role": "user", "content": prompt}]
-    response = openai.ChatCompletion.create(model=CONFIG['common']['openAIModel'], messages=messages, temperature=0)
+    response = openai.ChatCompletion.create(model=CONFIG['OpenAI']['openAIModel'], messages=messages, temperature=0)
     return response.choices[0].message["content"]
+
+
+# ####################################################
+#  Play an audio file
+#    loops = -1: play endlessly
+# ####################################################
+
+def playAudioFile(fileName, background=False, loops=0):
+
+    if not os.path.isfile(fileName):
+        logMessage(2, f"Can't play audio file {fileName}. File not found.")
+        return
+    
+    pygame.mixer.init()
+    pygame.mixer.music.load(fileName)
+    pygame.mixer.music.play(loops)
+
+    if not background:
+        # Wait until the audio playback is complete
+        while pygame.mixer.music.get_busy():
+            pass
+
+
+# ####################################################
+#  Play an audio PCM stream
+# ####################################################
+
+def playAudioStream(stream):
+    p = pyaudio.PyAudio()
+    stream = p.open(format=p.get_format_from_width(BYTES_PER_SAMPLE),
+        channels=CHANNELS,
+        rate=SAMPLE_RATE,
+        output=True)
+
+    with closing(stream) as pollyStream:
+        while True:
+            data = pollyStream.read(READ_CHUNK)
+            if data is None or len(data) == 0:
+                break
+            stream.write(data)
+
+    stream.stop_stream()
+    stream.close()
+    p.terminate()
+
+
+# ############################################################################
+#  Convert text to speech
+#    outputFile: Name of temporary audio file relative to configuration
+#       parameter audiofiles
+# ############################################################################
+
+def textToSpeech(text, outputFile=None):
+    session = boto3.Session(
+        accessKeyId=CONFIG['AWS']['awsKeyId'],
+        secretAccessKey=CONFIG['AWS']['awsKeySecret'],
+        regionName='eu-central-1'  # Replace with your desired AWS region
+    )
+    polly = session.client('polly')
+
+    # Determine audio output format
+    if outputFile is None:
+        format = "pcm"
+    else:
+        format = "mp3"
+        fileName = CONFIG['common']['audioFiles'] + "/" + outputFile + "." + format
+
+    try:
+        # Convert text to stream
+        response = polly.synthesize_speech(
+            Engine='neural',
+            Text=text,
+            OutputFormat=format,
+            VoiceId=CONFIG['AWS']['pollyVoiceId'],
+            LanguageCode=CONFIG['AWS']['language'],
+            SampleRate=str(SAMPLE_RATE)
+        )
+
+    except (BotoCoreError, ClientError) as error:
+        logMessage(0, error)
+        return
+
+    # Output stream
+    if outputFile is None:
+        playAudioStream(response['AudioStream'])
+    else:
+        if not os.path.isfile(fileName):
+            # Write stream to file
+            with open(fileName, 'wb') as f:
+                f.write(response['AudioStream'].read())
+        playAudioFile(fileName)
 
 
 # ####################################################
@@ -234,11 +294,13 @@ def listMicrophones():
 
 def selectMicrophone(micName):
     deviceIndex = None
+
     for index, name in enumerate(sr.Microphone.list_microphone_names()):
         if micName in name:
             deviceIndex = index
-            print("Selected microphone " + name)
+            logMessage(2, "Selected microphone " + name)
             break
+
     return deviceIndex
 
 
@@ -253,6 +315,7 @@ def main():
     parser.add_argument("--config", default="homeai.conf", help="Name of configuration file")
     parser.add_argument("--list_microphones", action="store_true", help="List available microphones")
     parser.add_argument("--microphone", default="default", help="Set name of microphone")
+    parser.add_argument("--log_level", default=0, choices=range(0, 2), help="Set level of log messages")
     parser.add_argument("--version", action="version", version='%(prog)s ' + VERSION)
     args = parser.parse_args()
 
@@ -260,6 +323,8 @@ def main():
     if args.list_microphones:
         listMicrophones()
         return
+
+    LOG_LEVEL = args.log_level
 
     # Read configuration
     if not readConfig(args.config):
@@ -281,10 +346,12 @@ def main():
     else:
         recognizer.energy_threshold = CONFIG['common']['energyThreshold']
 
-    textToSpeech("Bitte einen Befehl eingeben")
+    # Output welcome message
+    textToSpeech(CONFIG['messages']['welcome'], "welcome.mp3")
 
     while True:
         if listenForActivationWord(recognizer, microphone):
+            playAudioFile("listening.wav")
             print(">>> Ask Open AI")
 
             while True:
