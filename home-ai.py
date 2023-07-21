@@ -435,35 +435,33 @@ def main():
             playAudioFile("listening.wav")
             logMessage(2, ">>> Ask Open AI")
 
-            while True:
-                prompt = listenForOpenAICommand(recognizer, microphone)
+            prompt = listenForOpenAICommand(recognizer, microphone)
 
-                if prompt:
-                    if prompt == CONFIG['common']['stopWord']:
-                        textToSpeech(CONFIG['messages']['shutdown'], "shutdown")
-                        logMessage(2, "Shutting down Home AI")
-                        sys.exit()
-                    else:
-                        try:
-                            # Play sound until response from ChatGPT arrived and is converted to audio
-                            playAudioFile("processing.wav", loops=-1, background=True)
-                            
-                            # Send query to Chat GPT and output response
-                            response = askChatGPT(prompt)
-                            logMessage(2, response)
-                            textToSpeech(response, "response.mp3", useCache=False, play=False)
+            if not prompt is None:
+                if prompt == CONFIG['common']['stopWord']:
+                    textToSpeech(CONFIG['messages']['shutdown'], "shutdown")
+                    logMessage(2, "Shutting down Home AI")
+                    sys.exit()
+                else:
+                    try:
+                        # Play sound until response from ChatGPT arrived and is converted to audio
+                        playAudioFile("processing.wav", loops=-1, background=True)
+                        
+                        # Send query to Chat GPT and output response
+                        response = askChatGPT(prompt)
+                        logMessage(2, response)
+                        textToSpeech(response, "response.mp3", useCache=False, play=False)
 
-                            # Output response
-                            fadeOutAudio(1)
-                            playAudioFile("response.mp3")
+                        # Output response
+                        fadeOutAudio(1)
+                        playAudioFile("response.mp3")
 
-                        except Exception:
-                            logMessage(0, "Generic error")
-                            fadeOutAudio(1)
-                            textToSpeech(CONFIG['messages']['genericError'], "genericerror")
-
-                    # Wait for next activation word
-                    break
+                    except Exception:
+                        logMessage(0, "Generic error")
+                        fadeOutAudio(1)
+                        textToSpeech(CONFIG['messages']['genericError'], "genericerror")
+            else:
+                logMessage(2, "No prompt received")
 
 if __name__ == "__main__":
     main()

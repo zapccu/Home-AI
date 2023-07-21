@@ -6,6 +6,9 @@ record.py
 hai.sh
 audio/commandrec.wav
 audio/openairec.wav
+audio/didnotunderstand*
+audio/genericerror*
+audio/response*
 audio/test.wav
-audio/welcome.mp3
-audio/shutdown.mp3
+audio/welcome*
+audio/shutdown*
