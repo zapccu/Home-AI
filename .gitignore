@@ -2,3 +2,6 @@ homeaidev.conf
 temp_rec.wav
 w.py
 test.py
+audio/commandrec.wav
+audio/test.wav
+audio/welcome.mp3
