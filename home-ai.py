@@ -62,7 +62,7 @@ LOG_LEVEL = 0               # 0 = Print errors only
 # ####################################################
 
 def logMessage(level, message):
-    if level >= LOG_LEVEL:
+    if LOG_LEVEL >= level:
         print(message)
 
 
