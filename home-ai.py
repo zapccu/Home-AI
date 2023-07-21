@@ -22,7 +22,8 @@ CONFIG['common'] = {
     'stopWord': 'shutdown',
     'duration': 3,
     'energyThreshold': -1,
-    'sampleRate': 16000,
+    'language': 'en-GB',
+    'sampleRate': 44100,
     'audiofiles': os.path.dirname(os.path.realpath(__file__)) + "/audio"
 }
 CONFIG['AWS'] = {
@@ -213,8 +214,14 @@ def askChatGPT(prompt):
 def playAudioFile(fileName, background=False, loops=0):
 
     if not os.path.isfile(fileName):
-        logMessage(2, f"Can't play audio file {fileName}. File not found.")
-        return
+        found = False
+        if not fileName.startswith(CONFIG['common']['audiofiles']):
+            fileName = CONFIG['common']['audiofiles'] + "/" + fileName
+            if os.path.isfile(fileName):
+                found = True
+        if not found:
+            logMessage(2, f"Can't play audio file {fileName}. File not found.")
+            return
     
     pygame.mixer.init()
     pygame.mixer.music.load(fileName)
@@ -325,7 +332,6 @@ def listMicrophones():
             print("Input Device id ", dev.get('index'), " - ", dev.get('name'))
     p.terminate()
 
-    print(sr.Microphone.list_working_microphones())
 
 # ####################################################
 #  Select microphone
@@ -340,9 +346,10 @@ def selectMicrophone(micName):
 
     for i in range(0, numdevices):
         dev = p.get_device_info_by_host_api_device_index(0, i)
-        if (dev.get('maxInputChannels')) > 0:
+        if (dev.get('maxInputChannels')) > 0 and micName in dev.get('name'):
             deviceIndex = dev.get('index')
             print("Selected microphone ", dev.get('name'))
+            break
     p.terminate()
 
     return deviceIndex
