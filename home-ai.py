@@ -22,9 +22,11 @@ CONFIG['common'] = {
     'stopWord': 'shutdown',
     'duration': 3,
     'energyThreshold': -1,
-    'language': 'en-GB',
     'sampleRate': 44100,
     'audiofiles': os.path.dirname(os.path.realpath(__file__)) + "/audio"
+}
+CONFIG['Google'] = {
+    'language': 'en-GB'
 }
 CONFIG['AWS'] = {
     'awsKeyId': 'none',
@@ -45,7 +47,7 @@ CONFIG['messages'] = {
     'genericError': 'Something went wrong'    
 }
 
-# Audio parameters
+# Audio recording parameters
 SAMPLE_RATE      = 44100    # bit/s
 READ_CHUNK       = 4096     # Chunk size for output of audio date >4K
 CHANNELS         = 1        # Mono
@@ -124,7 +126,7 @@ def listenForActivationWord(recognizer, microphone):
             wavFile.writeframes(audioData)
             wavFile.close()
 
-        result = recognizer.recognize_google(audio, language=CONFIG['common']['language'])
+        result = recognizer.recognize_google(audio, language=CONFIG['Google']['language'])
         logMessage(2, "Understood " + result)
         words = result.lower().split()
         logMessage(2, words)
@@ -173,7 +175,7 @@ def listenForOpenAICommand(recognizer, microphone):
             wavFile.close()
 
         audioFile = open(recFile, "rb")
-        text = openai.Audio.transcribe("whisper-1", audioFile, language=CONFIG['common']['openAILanguage'])
+        text = openai.Audio.transcribe("whisper-1", audioFile, language=CONFIG['OpenAI']['openAILanguage'])
         audioFile.close()
 
         logMessage(2, text)
