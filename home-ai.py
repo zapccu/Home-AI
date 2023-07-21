@@ -4,10 +4,8 @@ import speech_recognition as sr
 import boto3
 import pyaudio
 import pygame
-import threading
 import sys
 import os
-import time
 import openai
 import wave
 from contextlib import closing
@@ -21,31 +19,39 @@ CONFIG = cp.ConfigParser()
 # Set default parameters
 CONFIG['common'] = {
     'activationWord': 'computer',
-    'stopWord': 'beenden',
+    'stopWord': 'shutdown',
     'duration': 3,
-    'energyThreshold': 100.0,
+    'energyThreshold': -1,
+    'sampleRate': 16000,
     'audiofiles': os.path.dirname(os.path.realpath(__file__)) + "/audio"
 }
 CONFIG['AWS'] = {
     'awsKeyId': 'none',
     'awsKeySecret': 'none',
     'region': 'eu-west-2',
-    'pollyVoiceId': 'Daniel',
-    'language': 'de-DE'
+    'pollyVoiceId': 'Brian',
+    'language': 'en-GB'
 }
 CONFIG['OpenAI'] = {
     'openAIKey': 'none',
-    'openAILanguage': 'de',
+    'openAILanguage': 'en',
     'openAIModel': 'gpt-3.5-turbo'
+}
+CONFIG['messages'] = {
+    'welcome': 'Hello, I am your personal artificial intelligence. Please say the activation word {activationWword}, if you like to ask me anything.',
+    'didNotUnderstand': 'Sorry, I did not understand this',
+    'shutdown': 'Shutting down',
+    'genericError': 'Something went wrong'    
 }
 
 # Audio parameters
-SAMPLE_RATE      = 16000    # bit/s
+SAMPLE_RATE      = 44100    # bit/s
 READ_CHUNK       = 4096     # Chunk size for output of audio date >4K
 CHANNELS         = 1        # Mono
 BYTES_PER_SAMPLE = 2        # Bytes per sample
 
-logMessage_LEVEL = 0
+# Log details level
+LOG_LEVEL = 0               # 0 = Print errors only
 
 
 # ####################################################
@@ -53,8 +59,9 @@ logMessage_LEVEL = 0
 # ####################################################
 
 def logMessage(level, message):
-    if level >= logMessage_LEVEL:
+    if level >= LOG_LEVEL:
         print(message)
+
 
 # ####################################################
 #  Read configuration from file
@@ -76,8 +83,9 @@ def readConfig(configFile):
         if CONFIG['AWS']['awsKeySecret'] == 'none':
             raise ValueError("AWS key not configured")
 
-        openai.api_key = CONFIG['OpenAI']['openAIKey']
-        CONFIG['messages']['welcome'].format(activationWord=CONFIG['common']['activationWord'])
+        SAMPLE_RATE = CONFIG['common']['sampleRate'];
+        openai.api_key = CONFIG['OpenAI']['openAIKey']      
+        CONFIG['messages']['welcome'] = CONFIG['messages']['welcome'].format(activationWord=CONFIG['common']['activationWord'])
 
         return True
     
@@ -97,6 +105,7 @@ def listenForActivationWord(recognizer, microphone):
 
     activationWord = CONFIG['common']['activationWord'].lower()
     listenTime = CONFIG['common']['duration']
+    recFile = CONFIG['common']['audiofiles'] + "/commandrec.wav"
 
     # Listen
     try:
@@ -104,6 +113,15 @@ def listenForActivationWord(recognizer, microphone):
             logMessage(2, f"Listening for {listenTime} seconds for activation word {activationWord} ...")
             audio = recognizer.listen(source, timeout=float(listenTime))
             #audio = recognizer.record(source, duration=float(listenTime))
+
+        # Save the audio as a WAV file
+        audioData = audio.get_raw_data()
+        with wave.open(recFile, "wb") as wavFile:
+            wavFile.setnchannels(CHANNELS)  # Mono
+            wavFile.setsampwidth(BYTES_PER_SAMPLE)  # 2 bytes per sample
+            wavFile.setframerate(audio.sample_rate)  # Use original sample rate
+            wavFile.writeframes(audioData)
+            wavFile.close()
 
         result = recognizer.recognize_google(audio, language=CONFIG['common']['language'])
         logMessage(2, "Understood " + result)
@@ -122,7 +140,7 @@ def listenForActivationWord(recognizer, microphone):
     except sr.UnknownValueError:
         logMessage(0, "Unknown Value Error: No input or unknown value")
     except sr.WaitTimeoutError:
-        logMessage(0, "Listening timed out")
+        logMessage(2, "Listening timed out")
 
     return False
 
@@ -163,23 +181,23 @@ def listenForOpenAICommand(recognizer, microphone):
 
         if command == "":
             logMessage(2, "Couldn't understand the command")
-#            play_audio_file('nicht_verstanden.mp3')
+            textToSpeech(CONFIG['messages']['didNotUnderstand'], "didnotunderstand")
             return None
 
         return command
     
     except sr.UnknownValueError:
         logMessage(0, "Couldn't understand the command")
- #       play_audio_file('nicht_verstanden.mp3')
+        textToSpeech(CONFIG['messages']['didNotUnderstand'], "didnotunderstand")
     except sr.WaitTimeoutError:
         logMessage(0, "No input")
 
     return None
 
 
-# ####################################################
+# ############################################################################
 #  Ask Chat GPT
-# ####################################################
+# ############################################################################
 
 def askChatGPT(prompt):
     messages = [{"role": "user", "content": prompt}]
@@ -187,10 +205,10 @@ def askChatGPT(prompt):
     return response.choices[0].message["content"]
 
 
-# ####################################################
+# ############################################################################
 #  Play an audio file
 #    loops = -1: play endlessly
-# ####################################################
+# ############################################################################
 
 def playAudioFile(fileName, background=False, loops=0):
 
@@ -203,14 +221,14 @@ def playAudioFile(fileName, background=False, loops=0):
     pygame.mixer.music.play(loops)
 
     if not background:
-        # Wait until the audio playback is complete
+        # Wait until the audio playback is completed
         while pygame.mixer.music.get_busy():
             pass
 
 
-# ####################################################
+# ############################################################################
 #  Play an audio PCM stream
-# ####################################################
+# ############################################################################
 
 def playAudioStream(stream):
     p = pyaudio.PyAudio()
@@ -232,16 +250,27 @@ def playAudioStream(stream):
 
 
 # ############################################################################
-#  Convert text to speech
-#    outputFile: Name of temporary audio file relative to configuration
-#       parameter audiofiles
+#  Fade out audio
 # ############################################################################
 
-def textToSpeech(text, outputFile=None):
+def fadeOutAudio(duration):
+    pygame.mixer.music.fadeout(duration * 1000)  # Fade out over the specified duration in milliseconds
+
+
+# ############################################################################
+#  Convert text to speech
+#    outputFile: Name of temporary audio file. File will be created or is
+#       expected to be found in "audiofiles" directory
+#    useCache: Flag for using cached/existing file. Set it to False to force
+#       creation of a new audio file
+#    play: Flag to prevent playback of audio
+# ############################################################################
+
+def textToSpeech(text, outputFile=None, useCache=True, play=True):
     session = boto3.Session(
-        accessKeyId=CONFIG['AWS']['awsKeyId'],
-        secretAccessKey=CONFIG['AWS']['awsKeySecret'],
-        regionName='eu-central-1'  # Replace with your desired AWS region
+        aws_access_key_id=CONFIG['AWS']['awsKeyId'],
+        aws_secret_access_key=CONFIG['AWS']['awsKeySecret'],
+        region_name='eu-central-1'  # Replace with your desired AWS region
     )
     polly = session.client('polly')
 
@@ -268,14 +297,15 @@ def textToSpeech(text, outputFile=None):
         return
 
     # Output stream
-    if outputFile is None:
+    if outputFile is None and play:
         playAudioStream(response['AudioStream'])
     else:
-        if not os.path.isfile(fileName):
+        if not os.path.isfile(fileName) or not useCache:
             # Write stream to file
             with open(fileName, 'wb') as f:
                 f.write(response['AudioStream'].read())
-        playAudioFile(fileName)
+        if play:
+            playAudioFile(fileName)
 
 
 # ####################################################
@@ -283,10 +313,19 @@ def textToSpeech(text, outputFile=None):
 # ####################################################
 
 def listMicrophones():
-    print("Available microphone devices are:")
-    for index, name in enumerate(sr.Microphone.list_microphone_names()):
-        print(f"Microphone with name \"{name}\" found")
+    print("Available microphone devices:")
 
+    p = pyaudio.PyAudio()
+    info = p.get_host_api_info_by_index(0)
+    numdevices = info.get('deviceCount')
+
+    for i in range(0, numdevices):
+        dev = p.get_device_info_by_host_api_device_index(0, i)
+        if (dev.get('maxInputChannels')) > 0:
+            print("Input Device id ", dev.get('index'), " - ", dev.get('name'))
+    p.terminate()
+
+    print(sr.Microphone.list_working_microphones())
 
 # ####################################################
 #  Select microphone
@@ -295,11 +334,16 @@ def listMicrophones():
 def selectMicrophone(micName):
     deviceIndex = None
 
-    for index, name in enumerate(sr.Microphone.list_microphone_names()):
-        if micName in name:
-            deviceIndex = index
-            logMessage(2, "Selected microphone " + name)
-            break
+    p = pyaudio.PyAudio()
+    info = p.get_host_api_info_by_index(0)
+    numdevices = info.get('deviceCount')
+
+    for i in range(0, numdevices):
+        dev = p.get_device_info_by_host_api_device_index(0, i)
+        if (dev.get('maxInputChannels')) > 0:
+            deviceIndex = dev.get('index')
+            print("Selected microphone ", dev.get('name'))
+    p.terminate()
 
     return deviceIndex
 
@@ -314,8 +358,8 @@ def main():
     parser = argparse.ArgumentParser(prog="HomeAI", description="Home AI Assistant")
     parser.add_argument("--config", default="homeai.conf", help="Name of configuration file")
     parser.add_argument("--list_microphones", action="store_true", help="List available microphones")
-    parser.add_argument("--microphone", default="default", help="Set name of microphone")
-    parser.add_argument("--log_level", default=0, choices=range(0, 2), help="Set level of log messages")
+    parser.add_argument("--microphone", help="Set name of microphone")
+    parser.add_argument("--log_level", default=0, type=int, choices=range(0, 3), help="Set level of log messages")
     parser.add_argument("--version", action="version", version='%(prog)s ' + VERSION)
     args = parser.parse_args()
 
@@ -325,45 +369,68 @@ def main():
         return
 
     LOG_LEVEL = args.log_level
+    print("Set log level to " + str(LOG_LEVEL))
 
     # Read configuration
     if not readConfig(args.config):
         return
 
     # Setup microphone
-    deviceIndex = selectMicrophone(args.microphone)
-    # microphone = sr.Microphone(sample_rate=SAMPLE_RATE, device_index=deviceIndex)
-    microphone = sr.Microphone(sample_rate=SAMPLE_RATE)
+    deviceIndex = None
+    if args.microphone:
+        deviceIndex = selectMicrophone(args.microphone)
+    else:
+        print("Using system default microphone")
+    microphone = sr.Microphone(sample_rate=SAMPLE_RATE, device_index=deviceIndex)
+    # microphone = sr.Microphone(sample_rate=SAMPLE_RATE)
 
     # Setup recognizer
     recognizer = sr.Recognizer()
     recognizer.dynamic_energy_threshold = False
     if int(CONFIG['common']['energyThreshold']) == -1:
-        print("Calibrating energy threshold ...")
+        logMessage(2, "Calibrating energy threshold ...")
         with microphone as source:
             recognizer.adjust_for_ambient_noise(source, duration=1)
-        print("Speech recognition energy threshold = " + str(recognizer.energy_threshold))
+        logMessage(2, "Speech recognition energy threshold = " + str(recognizer.energy_threshold))
     else:
         recognizer.energy_threshold = CONFIG['common']['energyThreshold']
 
     # Output welcome message
-    textToSpeech(CONFIG['messages']['welcome'], "welcome.mp3")
+    textToSpeech(CONFIG['messages']['welcome'], "welcome")
 
     while True:
         if listenForActivationWord(recognizer, microphone):
             playAudioFile("listening.wav")
-            print(">>> Ask Open AI")
+            logMessage(2, ">>> Ask Open AI")
 
             while True:
                 prompt = listenForOpenAICommand(recognizer, microphone)
 
                 if prompt:
                     if prompt == CONFIG['common']['stopWord']:
-                        print("Shutting down Home AI")
+                        textToSpeech(CONFIG['messages']['shutdown'], "shutdown")
+                        logMessage(2, "Shutting down Home AI")
                         sys.exit()
                     else:
-                        response = askChatGPT(prompt)
-                        print(response)
+                        try:
+                            # Play sound until response from ChatGPT arrived and is converted to audio
+                            playAudioFile("processing.wav", loops=-1, background=True)
+                            
+                            # Send query to Chat GPT and output response
+                            response = askChatGPT(prompt)
+                            logMessage(2, response)
+                            textToSpeech(response, "response.mp3", useCache=False, play=False)
+
+                            # Output response
+                            fadeOutAudio(1)
+                            playAudioFile("response.mp3")
+
+                        except Exception:
+                            logMessage(0, "Generic error")
+                            fadeOutAudio(1)
+                            textToSpeech(CONFIG['messages']['genericError'], "genericerror")
+
+                    # Wait for next activation word
                     break
 
 if __name__ == "__main__":

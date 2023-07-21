@@ -1,6 +1,8 @@
 # Home-AI
 
-Build a Home AI based voice assistant
+Build a Home AI based voice assistant 
+
+Code is under contruction and might not work from time to time
 
 ## Installation
 
