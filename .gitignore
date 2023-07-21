@@ -4,5 +4,7 @@ w.py
 test.py
 record.py
 audio/commandrec.wav
+audio/openairec.wav
 audio/test.wav
 audio/welcome.mp3
+audio/shutdown.mp3

@@ -101,6 +101,21 @@ def readConfig(configFile):
 
 
 # ####################################################
+#  Save audio to file
+# ####################################################
+
+def saveRecordedAudio(audio, name):
+
+    audioData = audio.get_raw_data()
+    with wave.open(recFile, "wb") as wavFile:
+        wavFile.setnchannels(CHANNELS)  # Mono
+        wavFile.setsampwidth(BYTES_PER_SAMPLE)  # 2 bytes per sample
+        wavFile.setframerate(audio.sample_rate)  # Use original sample rate
+        wavFile.writeframes(audioData)
+        wavFile.close()
+
+
+# ####################################################
 #  Listen for activation word
 # ####################################################
 
@@ -108,7 +123,7 @@ def listenForActivationWord(recognizer, microphone):
 
     activationWord = CONFIG['common']['activationWord'].lower()
     listenTime = CONFIG['common']['duration']
-    recFile = CONFIG['common']['audiofiles'] + "/commandrec.wav"
+    recFile = CONFIG['common']['audiofiles'] + "/" + name
 
     # Listen
     try:
@@ -117,14 +132,7 @@ def listenForActivationWord(recognizer, microphone):
             audio = recognizer.listen(source, timeout=float(listenTime))
             #audio = recognizer.record(source, duration=float(listenTime))
 
-        # Save the audio as a WAV file
-        audioData = audio.get_raw_data()
-        with wave.open(recFile, "wb") as wavFile:
-            wavFile.setnchannels(CHANNELS)  # Mono
-            wavFile.setsampwidth(BYTES_PER_SAMPLE)  # 2 bytes per sample
-            wavFile.setframerate(audio.sample_rate)  # Use original sample rate
-            wavFile.writeframes(audioData)
-            wavFile.close()
+        saveRecordedAudio(audio, recFile)
 
         result = recognizer.recognize_google(audio, language=CONFIG['Google']['language'])
         logMessage(2, "Understood " + result)
@@ -153,6 +161,7 @@ def listenForActivationWord(recognizer, microphone):
 # ####################################################
 
 def listenForOpenAICommand(recognizer, microphone):
+
     listenTime = CONFIG['common']['duration']
     recFile = CONFIG['common']['audiofiles'] + "/openairec.wav"
 
@@ -162,18 +171,10 @@ def listenForOpenAICommand(recognizer, microphone):
             logMessage(2, f"Listening for query for {listenTime} seconds ...")
             audio = recognizer.listen(source, timeout=float(listenTime))
 
+        saveRecordedAudio(audio, recFile)
+
         # try recognizing the speech in the recording
         # if the speech is unintelligible, `UnknownValueError` will be thrown
-        audioData = audio.get_raw_data()
-
-        # Save the audio as a WAV file
-        with wave.open(recFile, "wb") as wavFile:
-            wavFile.setnchannels(CHANNELS)  # Mono
-            wavFile.setsampwidth(BYTES_PER_SAMPLE)  # 2 bytes per sample
-            wavFile.setframerate(audio.sample_rate)  # Use original sample rate
-            wavFile.writeframes(audioData)
-            wavFile.close()
-
         audioFile = open(recFile, "rb")
         text = openai.Audio.transcribe("whisper-1", audioFile, language=CONFIG['OpenAI']['openAILanguage'])
         audioFile.close()
@@ -286,8 +287,10 @@ def textToSpeech(text, outputFile=None, useCache=True, play=True):
     # Determine audio output format
     if outputFile is None:
         format = "pcm"
+        sampleRate=16000
     else:
         format = "mp3"
+        sampleRate=22050
         fileName = CONFIG['common']['audioFiles'] + "/" + outputFile + "." + format
 
     try:
@@ -298,7 +301,7 @@ def textToSpeech(text, outputFile=None, useCache=True, play=True):
             OutputFormat=format,
             VoiceId=CONFIG['AWS']['pollyVoiceId'],
             LanguageCode=CONFIG['AWS']['language'],
-            SampleRate=str(SAMPLE_RATE)
+            SampleRate=str(sampleRate)
         )
 
     except (BotoCoreError, ClientError) as error:
@@ -349,6 +352,7 @@ def selectMicrophone(micName):
     for i in range(0, numdevices):
         dev = p.get_device_info_by_host_api_device_index(0, i)
         if (dev.get('maxInputChannels')) > 0 and micName in dev.get('name'):
+            # Found microphone
             deviceIndex = dev.get('index')
             print("Selected microphone ", dev.get('name'))
             break
