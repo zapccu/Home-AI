@@ -107,7 +107,7 @@ def readConfig(configFile):
 def saveRecordedAudio(audio, name):
 
     audioData = audio.get_raw_data()
-    with wave.open(recFile, "wb") as wavFile:
+    with wave.open(name, "wb") as wavFile:
         wavFile.setnchannels(CHANNELS)  # Mono
         wavFile.setsampwidth(BYTES_PER_SAMPLE)  # 2 bytes per sample
         wavFile.setframerate(audio.sample_rate)  # Use original sample rate
