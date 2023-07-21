@@ -71,6 +71,7 @@ def logMessage(level, message):
 # ####################################################
 
 def readConfig(configFile):
+
     try:
         if not os.path.isfile(configFile):
             raise FileNotFoundError(f"Config file {configFile} not found.")
@@ -204,6 +205,7 @@ def listenForOpenAICommand(recognizer, microphone):
 # ############################################################################
 
 def askChatGPT(prompt):
+
     messages = [{"role": "user", "content": prompt}]
     response = openai.ChatCompletion.create(model=CONFIG['OpenAI']['openAIModel'], messages=messages, temperature=0)
     return response.choices[0].message["content"]
@@ -241,6 +243,7 @@ def playAudioFile(fileName, background=False, loops=0):
 # ############################################################################
 
 def playAudioStream(stream):
+
     p = pyaudio.PyAudio()
     stream = p.open(format=p.get_format_from_width(BYTES_PER_SAMPLE),
         channels=CHANNELS,
@@ -277,6 +280,7 @@ def fadeOutAudio(duration):
 # ############################################################################
 
 def textToSpeech(text, outputFile=None, useCache=True, play=True):
+
     session = boto3.Session(
         aws_access_key_id=CONFIG['AWS']['awsKeyId'],
         aws_secret_access_key=CONFIG['AWS']['awsKeySecret'],
@@ -325,12 +329,12 @@ def textToSpeech(text, outputFile=None, useCache=True, play=True):
 # ####################################################
 
 def listMicrophones():
-    print("Available microphone devices:")
 
     p = pyaudio.PyAudio()
     info = p.get_host_api_info_by_index(0)
     numdevices = info.get('deviceCount')
 
+    print("Available microphone devices:")
     for i in range(0, numdevices):
         dev = p.get_device_info_by_host_api_device_index(0, i)
         if (dev.get('maxInputChannels')) > 0:
@@ -343,6 +347,7 @@ def listMicrophones():
 # ####################################################
 
 def selectMicrophone(micName):
+
     deviceIndex = None
 
     p = pyaudio.PyAudio()
@@ -373,6 +378,7 @@ def main():
     parser.add_argument("--list_microphones", action="store_true", help="List available microphones")
     parser.add_argument("--microphone", help="Set name of microphone")
     parser.add_argument("--log_level", default=0, type=int, choices=range(0, 3), help="Set level of log messages")
+    parser.add_argument("--no_welcome", action="store_true", help="Do not play welcome message")
     parser.add_argument("--version", action="version", version='%(prog)s ' + VERSION)
     args = parser.parse_args()
 
@@ -409,7 +415,8 @@ def main():
         recognizer.energy_threshold = CONFIG['common']['energyThreshold']
 
     # Output welcome message
-    textToSpeech(CONFIG['messages']['welcome'], "welcome")
+    if not args.no_welcome:
+        textToSpeech(CONFIG['messages']['welcome'], "welcome")
 
     while True:
         if listenForActivationWord(recognizer, microphone):
