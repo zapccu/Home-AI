@@ -1,3 +1,15 @@
+
+# ############################################################################
+#
+#   home-ai.py
+#
+#   A ChatGPT based home assistant
+#
+#   (c) 2023 by Dirk Braner (zapccu) - d.braner@gmx.net
+#
+# ############################################################################
+
+
 import configparser as cp
 import argparse
 import speech_recognition as sr
