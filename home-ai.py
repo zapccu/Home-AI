@@ -206,7 +206,7 @@ def listenForOpenAICommand(recognizer, microphone):
         logMessage(0, "Couldn't understand the command")
         textToSpeech(CONFIG['messages']['didNotUnderstand'], "didnotunderstand")
     except sr.WaitTimeoutError:
-        logMessage(0, "No input")
+        logMessage(2, "No input")
 
     return None
 
