@@ -60,7 +60,6 @@ CONFIG['messages'] = {
 }
 
 # Audio recording parameters
-SAMPLE_RATE      = 44100    # bit/s
 READ_CHUNK       = 4096     # Chunk size for output of audio date >4K
 CHANNELS         = 1        # Mono
 BYTES_PER_SAMPLE = 2        # Bytes per sample
@@ -74,7 +73,7 @@ LOG_LEVEL = 0               # 0 = Print errors only
 # ####################################################
 
 def logMessage(level, message):
-    if LOG_LEVEL >= level:
+    if level <= LOG_LEVEL:
         print(message)
 
 
@@ -83,6 +82,7 @@ def logMessage(level, message):
 # ####################################################
 
 def readConfig(configFile):
+    global CONFIG
 
     try:
         if not os.path.isfile(configFile):
@@ -99,7 +99,6 @@ def readConfig(configFile):
         if CONFIG['AWS']['awsKeySecret'] == 'none':
             raise ValueError("AWS key not configured")
 
-        SAMPLE_RATE = CONFIG['common']['sampleRate'];
         openai.api_key = CONFIG['OpenAI']['openAIKey']      
         CONFIG['messages']['welcome'] = CONFIG['messages']['welcome'].format(activationWord=CONFIG['common']['activationWord'])
 
@@ -136,7 +135,7 @@ def listenForActivationWord(recognizer, microphone):
 
     activationWord = CONFIG['common']['activationWord'].lower()
     listenTime = CONFIG['common']['duration']
-    recFile = CONFIG['common']['audiofiles'] + "/" + name
+    recFile = CONFIG['common']['audiofiles'] + "/commandrec.wav"
 
     # Listen
     try:
@@ -259,7 +258,7 @@ def playAudioStream(stream):
     p = pyaudio.PyAudio()
     stream = p.open(format=p.get_format_from_width(BYTES_PER_SAMPLE),
         channels=CHANNELS,
-        rate=SAMPLE_RATE,
+        rate=CONFIG['common']['sampleRate'],
         output=True)
 
     with closing(stream) as pollyStream:
@@ -288,10 +287,10 @@ def fadeOutAudio(duration):
 #       expected to be found in "audiofiles" directory
 #    useCache: Flag for using cached/existing file. Set it to False to force
 #       creation of a new audio file
-#    play: Flag to prevent playback of audio
+#    fadeOutAudio: Fade out already playing audio before playing speech
 # ############################################################################
 
-def textToSpeech(text, outputFile=None, useCache=True, play=True):
+def textToSpeech(text, outputFile=None, useCache=True, fadeOutAudio=False):
 
     session = boto3.Session(
         aws_access_key_id=CONFIG['AWS']['awsKeyId'],
@@ -324,16 +323,18 @@ def textToSpeech(text, outputFile=None, useCache=True, play=True):
         logMessage(0, error)
         return
 
+    if fadeOutAudio:
+        pygame.mixer.music.fadeout(duration * 1000)
+
     # Output stream
-    if outputFile is None and play:
+    if outputFile is None:
         playAudioStream(response['AudioStream'])
     else:
         if not os.path.isfile(fileName) or not useCache:
             # Write stream to file
             with open(fileName, 'wb') as f:
                 f.write(response['AudioStream'].read())
-        if play:
-            playAudioFile(fileName)
+        playAudioFile(fileName)
 
 
 # ####################################################
@@ -383,6 +384,7 @@ def selectMicrophone(micName):
 # ####################################################
 
 def main():
+    global LOG_LEVEL
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(prog="HomeAI", description="Home AI Assistant")
@@ -399,8 +401,9 @@ def main():
         listMicrophones()
         return
 
-    LOG_LEVEL = args.log_level
+    LOG_LEVEL = int(args.log_level)
     print("Set log level to " + str(LOG_LEVEL))
+    print("LOG_LEVEL = ", LOG_LEVEL)
 
     # Read configuration
     if not readConfig(args.config):
@@ -412,8 +415,8 @@ def main():
         deviceIndex = selectMicrophone(args.microphone)
     else:
         print("Using system default microphone")
-    microphone = sr.Microphone(sample_rate=SAMPLE_RATE, device_index=deviceIndex)
-    # microphone = sr.Microphone(sample_rate=SAMPLE_RATE)
+    microphone = sr.Microphone(sample_rate=int(CONFIG['common']['sampleRate']), device_index=deviceIndex)
+    # microphone = sr.Microphone(sample_rate=CONFIG['common']['sampleRate'])
 
     # Setup recognizer
     recognizer = sr.Recognizer()
@@ -432,7 +435,7 @@ def main():
 
     while True:
         if listenForActivationWord(recognizer, microphone):
-            playAudioFile("listening.wav")
+            playAudioFile("listening.wav", background=True)
             logMessage(2, ">>> Ask Open AI")
 
             prompt = listenForOpenAICommand(recognizer, microphone)
@@ -450,11 +453,7 @@ def main():
                         # Send query to Chat GPT and output response
                         response = askChatGPT(prompt)
                         logMessage(2, response)
-                        textToSpeech(response, "response.mp3", useCache=False, play=False)
-
-                        # Output response
-                        fadeOutAudio(1)
-                        playAudioFile("response.mp3")
+                        textToSpeech(response, "response", useCache=False, fadeOutAudio=True)
 
                     except Exception:
                         logMessage(0, "Generic error")
