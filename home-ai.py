@@ -260,7 +260,7 @@ def playAudioStream(stream):
     p = pyaudio.PyAudio()
     stream = p.open(format=p.get_format_from_width(BYTES_PER_SAMPLE),
         channels=CHANNELS,
-        rate=CONFIG['common']['sampleRate'],
+        rate=int(CONFIG['common']['sampleRate']),
         output=True)
 
     with closing(stream) as pollyStream:
@@ -296,7 +296,7 @@ def fadeOutAudio(duration):
 #    fadeOutAudio: Fade out already playing audio before playing speech
 # ############################################################################
 
-def textToSpeech(text, outputFile=None, useCache=True, fadeOutAudio=False):
+def textToSpeech(text, outputFile=None, useCache=True):
 
     session = boto3.Session(
         aws_access_key_id=CONFIG['AWS']['awsKeyId'],
@@ -308,29 +308,26 @@ def textToSpeech(text, outputFile=None, useCache=True, fadeOutAudio=False):
     # Determine audio output format
     if outputFile is None:
         format = "pcm"
-        sampleRate=16000
+        sampleRate="16000"
     else:
         format = "mp3"
-        sampleRate=22050
+        sampleRate="22050"
         fileName = CONFIG['common']['audioFiles'] + "/" + outputFile + "." + format
 
     try:
         # Convert text to stream
         response = polly.synthesize_speech(
-            Engine='neural',
+            Engine='standard',
             Text=text,
             OutputFormat=format,
             VoiceId=CONFIG['AWS']['pollyVoiceId'],
             LanguageCode=CONFIG['AWS']['language'],
-            SampleRate=str(sampleRate)
+            SampleRate=sampleRate
         )
 
     except (BotoCoreError, ClientError) as error:
-        logMessage(0, error)
+        logMessage(0, "BotoCoreError" + error)
         return
-
-    if fadeOutAudio:
-        fadeOutAudio(1)
 
     # Output stream
     if outputFile is None:
@@ -338,6 +335,7 @@ def textToSpeech(text, outputFile=None, useCache=True, fadeOutAudio=False):
     else:
         if not os.path.isfile(fileName) or not useCache:
             # Write stream to file
+            logMessage(2, "Writing speech audio to file " + fileName)
             with open(fileName, 'wb') as f:
                 f.write(response['AudioStream'].read())
         playAudioFile(fileName)
@@ -459,7 +457,8 @@ def main():
                         # Send query to Chat GPT and output response
                         response = askChatGPT(prompt)
                         logMessage(2, response)
-                        textToSpeech(response, "response", useCache=False, fadeOutAudio=True)
+                        fadeOutAudio(1)
+                        textToSpeech(response, "response", useCache=False)
 
                     except Exception:
                         logMessage(0, "Generic error")
