@@ -225,6 +225,7 @@ def askChatGPT(prompt):
 # ############################################################################
 #  Play an audio file
 #    loops = -1: play endlessly
+#    loops = 0: play once
 # ############################################################################
 
 def playAudioFile(fileName, background=False, loops=0):
@@ -275,10 +276,11 @@ def playAudioStream(stream):
 
 # ############################################################################
 #  Fade out audio
+#    duration: fade out duration in seconds
 # ############################################################################
 
 def fadeOutAudio(duration):
-    pygame.mixer.music.fadeout(duration * 1000)  # Fade out over the specified duration in milliseconds
+    pygame.mixer.music.fadeout(duration * 1000)
 
 
 # ############################################################################
@@ -324,7 +326,7 @@ def textToSpeech(text, outputFile=None, useCache=True, fadeOutAudio=False):
         return
 
     if fadeOutAudio:
-        pygame.mixer.music.fadeout(duration * 1000)
+        fadeOutAudio(1)
 
     # Output stream
     if outputFile is None:
