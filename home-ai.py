@@ -65,7 +65,7 @@ CHANNELS         = 1        # Mono
 BYTES_PER_SAMPLE = 2        # Bytes per sample
 
 # Log details level
-LOG_LEVEL = 0               # 0 = Print errors only
+LOG_LEVEL = 0               # 0 = Print errors only, 1 = Print some more information, 2 = Print debug information
 
 
 # ####################################################
@@ -147,7 +147,7 @@ def listenForActivationWord(recognizer, microphone):
         saveRecordedAudio(audio, recFile)
 
         result = recognizer.recognize_google(audio, language=CONFIG['Google']['language'])
-        logMessage(2, "Understood " + result)
+        logMessage(2, "Understood: " + result)
         words = result.lower().split()
         logMessage(2, words)
 
@@ -157,11 +157,11 @@ def listenForActivationWord(recognizer, microphone):
         return True
 
     except ValueError:   # Raised by index()
-        logMessage(0, "Value Error: List of words does not contain activation word " + activationWord)
+        logMessage(2, "Value Error: List of words does not contain activation word " + activationWord)
     except LookupError:
-        logMessage(0, "Lookup Error: Could not understand audio")
+        logMessage(2, "Lookup Error: Could not understand audio")
     except sr.UnknownValueError:
-        logMessage(0, "Unknown Value Error: No input or unknown value")
+        logMessage(2, "Unknown Value Error: No input or unknown value")
     except sr.WaitTimeoutError:
         logMessage(2, "Listening timed out")
 
@@ -224,6 +224,7 @@ def askChatGPT(prompt):
 
 # ############################################################################
 #  Play an audio file
+#
 #    loops = -1: play endlessly
 #    loops = 0: play once
 # ############################################################################
@@ -276,6 +277,7 @@ def playAudioStream(stream):
 
 # ############################################################################
 #  Fade out audio
+#
 #    duration: fade out duration in seconds
 # ############################################################################
 
@@ -284,9 +286,11 @@ def fadeOutAudio(duration):
 
 
 # ############################################################################
-#  Convert text to speech
+#  Convert text to speech and play result
+#
 #    outputFile: Name of temporary audio file. File will be created or is
-#       expected to be found in "audiofiles" directory
+#       expected to be found in "audiofiles" directory. Name must be specified
+#       without file extension.
 #    useCache: Flag for using cached/existing file. Set it to False to force
 #       creation of a new audio file
 #    fadeOutAudio: Fade out already playing audio before playing speech
@@ -438,7 +442,7 @@ def main():
     while True:
         if listenForActivationWord(recognizer, microphone):
             playAudioFile("listening.wav", background=True)
-            logMessage(2, ">>> Ask Open AI")
+            logMessage(2, "\n>>> Ask Open AI")
 
             prompt = listenForOpenAICommand(recognizer, microphone)
 
