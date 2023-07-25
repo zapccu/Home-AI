@@ -97,11 +97,22 @@ def errorOut(errorCode):
         return False
     if errorCode in CONFIG['messages']:
         logMessage(1, CONFIG['messages'][errorCode])
-        textToSpeech(CONFIG['messages'][errorCode], errorCode)
+        playAudioMessage(errorCode)
         return True
     else:
         return False
-    
+
+
+# ############################################################################
+#  Play preconfigured audio message
+# ############################################################################
+
+def playAudioMessage(messageKey):
+    if messageKey in CONFIG['messages']:
+        textToSpeech(CONFIG['messages'][messageKey], messageKey)
+    else:
+        logMessage(1, f"Message key {messageKey} not found in configuration")
+
 
 # ############################################################################
 #  Read configuration from file
@@ -266,7 +277,6 @@ def askChatGPT(prompt):
 
 # ############################################################################
 #  Play an audio file
-#
 #    loops = -1: play endlessly
 #    loops = 0: play once
 # ############################################################################
@@ -476,7 +486,7 @@ def main():
 
     # Output welcome message. Will be cached in welcome.mp3
     if not args.no_welcome:
-        textToSpeech(CONFIG['messages']['welcome'], "welcome")
+        playAudioMessage('welcome')
         playAudioFile("listening.wav")
 
     while True:
