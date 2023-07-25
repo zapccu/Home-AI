@@ -31,11 +31,15 @@ CONFIG = cp.ConfigParser()
 # Set default parameters
 CONFIG['common'] = {
     'activationWord': 'computer',
-    'stopWord': 'shutdown',
     'duration': 3,
     'energyThreshold': -1,
     'sampleRate': 44100,
     'audiofiles': os.path.dirname(os.path.realpath(__file__)) + "/audio"
+}
+CONFIG['commands'] = {
+    'stop': 'stop',
+    'mute': 'mute',
+    'unmute': 'unmute'
 }
 CONFIG['Google'] = {
     'language': 'en-GB'
@@ -56,7 +60,8 @@ CONFIG['messages'] = {
     'welcome': 'Hello, I am your personal artificial intelligence. Please say the activation word {activationWword}, if you like to ask me anything.',
     'didNotUnderstand': 'Sorry, I did not understand this',
     'shutdown': 'Shutting down',
-    'genericError': 'Something went wrong'    
+    'genericError': 'Something went wrong',
+    'muted': 'I am currently inactive. Activate me to ask questions' 
 }
 
 # Audio recording parameters
@@ -65,24 +70,45 @@ CHANNELS         = 1        # Mono
 BYTES_PER_SAMPLE = 2        # Bytes per sample
 
 # Log details level
-LOG_LEVEL = 0               # 0 = Print errors only, 1 = Print some more information, 2 = Print debug information
+LOG_LEVEL = 0               # 0 = Print errors only, 1 = Print some more information, 2 = Print debug information, 3 = Print detected words
+
+# Control commands
+COMMANDS = []
+
+# Mute OpenAI. 1 = Do not listen for OpenAI queries
+SOFT_MUTE = 0
 
 
-# ####################################################
+# ############################################################################
 #  Write logMessage messages
-# ####################################################
+# ############################################################################
 
 def logMessage(level, message):
     if level <= LOG_LEVEL:
         print(message)
 
 
-# ####################################################
+# ############################################################################
+#  Error output via audio
+# ############################################################################
+
+def errorOut(errorCode):
+    if errorCode is None:
+        return False
+    if errorCode in CONFIG['messages']:
+        logMessage(1, CONFIG['messages'][errorCode])
+        textToSpeech(CONFIG['messages'][errorCode], errorCode)
+        return True
+    else:
+        return False
+    
+
+# ############################################################################
 #  Read configuration from file
-# ####################################################
+# ############################################################################
 
 def readConfig(configFile):
-    global CONFIG
+    global CONFIG, COMMANDS
 
     try:
         if not os.path.isfile(configFile):
@@ -101,6 +127,8 @@ def readConfig(configFile):
 
         openai.api_key = CONFIG['OpenAI']['openAIKey']      
         CONFIG['messages']['welcome'] = CONFIG['messages']['welcome'].format(activationWord=CONFIG['common']['activationWord'])
+        COMMANDS = list(dict(CONFIG.items('commands')).values())
+        for commands
 
         return True
     
@@ -112,9 +140,11 @@ def readConfig(configFile):
     return False    
 
 
-# ####################################################
+# ############################################################################
 #  Save audio to file
-# ####################################################
+#    audio: audio data
+#    name: absolute name of audio file
+# ############################################################################
 
 def saveRecordedAudio(audio, name):
 
@@ -127,9 +157,10 @@ def saveRecordedAudio(audio, name):
         wavFile.close()
 
 
-# ####################################################
+# ############################################################################
 #  Listen for activation word
-# ####################################################
+#  Will return activation word or detected command.
+# ############################################################################
 
 def listenForActivationWord(recognizer, microphone):
 
@@ -144,33 +175,45 @@ def listenForActivationWord(recognizer, microphone):
             audio = recognizer.listen(source, timeout=float(listenTime))
             #audio = recognizer.record(source, duration=float(listenTime))
 
-        saveRecordedAudio(audio, recFile)
+        if LOG_LEVEL == 3:
+            saveRecordedAudio(audio, recFile)
 
+        # Speech recognition
         result = recognizer.recognize_google(audio, language=CONFIG['Google']['language'])
-        logMessage(2, "Understood: " + result)
+        logMessage(3, "Understood: " + result)
         words = result.lower().split()
-        logMessage(2, words)
+        logMessage(3, words)
 
-        # Next statement will raise a ValueError exception of activation word is not found
-        words.index(activationWord)
+        # Search for activation word. Will raise a ValueError exception if activation word is not found
+        idxActivationWord = words.index(activationWord)
+        logMessage(3, "Understood activation word " + activationWord)
 
-        return True
+        # Check for control commands
+        if len(words) > idxActivationWord+1:
+            for controlWord,commandList in CONFIG.items('commands'):
+                commandWords = commandList.split(',')
+                if words[idxActivationWord+1] in commandWords:
+                    logMessage(3, "Understood control command " + commandList + " [" + controlWord + "]")
+                    return controlWord
+
+        return activationWord
 
     except ValueError:   # Raised by index()
         logMessage(2, "Value Error: List of words does not contain activation word " + activationWord)
     except LookupError:
-        logMessage(2, "Lookup Error: Could not understand audio")
+        logMessage(1, "Lookup Error: Could not understand audio")
+        return "didNotUnderstand"
     except sr.UnknownValueError:
         logMessage(2, "Unknown Value Error: No input or unknown value")
     except sr.WaitTimeoutError:
         logMessage(2, "Listening timed out")
 
-    return False
+    return None
 
 
-# ####################################################
+# ############################################################################
 #  Listen for OpenAI command
-# ####################################################
+# ############################################################################
 
 def listenForOpenAICommand(recognizer, microphone):
 
@@ -191,20 +234,19 @@ def listenForOpenAICommand(recognizer, microphone):
         text = openai.Audio.transcribe("whisper-1", audioFile, language=CONFIG['OpenAI']['openAILanguage'])
         audioFile.close()
 
-        logMessage(2, text)
-        logMessage(2, text['text'])
+        logMessage(3, text)
+        logMessage(3, text['text'])
         command = text['text']
 
         if command == "":
-            logMessage(2, "Couldn't understand the command")
-            textToSpeech(CONFIG['messages']['didNotUnderstand'], "didnotunderstand")
-            return None
+            logMessage(1, "Couldn't understand the command")
+            return 'didNotUnderstand'
 
         return command
     
     except sr.UnknownValueError:
-        logMessage(0, "Couldn't understand the command")
-        textToSpeech(CONFIG['messages']['didNotUnderstand'], "didnotunderstand")
+        logMessage(1, "Couldn't understand the command")
+        return 'didNotUnderstand'
     except sr.WaitTimeoutError:
         logMessage(2, "No input")
 
@@ -296,12 +338,12 @@ def fadeOutAudio(duration):
 #    fadeOutAudio: Fade out already playing audio before playing speech
 # ############################################################################
 
-def textToSpeech(text, outputFile=None, useCache=True):
+def textToSpeech(text, outputFile=None, useCache=True, background=False):
 
     session = boto3.Session(
         aws_access_key_id=CONFIG['AWS']['awsKeyId'],
         aws_secret_access_key=CONFIG['AWS']['awsKeySecret'],
-        region_name='eu-central-1'  # Replace with your desired AWS region
+        region_name=CONFIG['AWS']['region']
     )
     polly = session.client('polly')
 
@@ -338,12 +380,12 @@ def textToSpeech(text, outputFile=None, useCache=True):
             logMessage(2, "Writing speech audio to file " + fileName)
             with open(fileName, 'wb') as f:
                 f.write(response['AudioStream'].read())
-        playAudioFile(fileName)
+        playAudioFile(fileName, background: background)
 
 
-# ####################################################
+# ############################################################################
 #  List configured microphones
-# ####################################################
+# ############################################################################
 
 def listMicrophones():
 
@@ -359,9 +401,9 @@ def listMicrophones():
     p.terminate()
 
 
-# ####################################################
+# ############################################################################
 #  Select microphone
-# ####################################################
+# ############################################################################
 
 def selectMicrophone(micName):
 
@@ -383,19 +425,19 @@ def selectMicrophone(micName):
     return deviceIndex
 
 
-# ####################################################
+# ############################################################################
 #  Main function
-# ####################################################
+# ############################################################################
 
 def main():
-    global LOG_LEVEL
+    global LOG_LEVEL, SOFT_MUTE
 
     # Parse command line arguments
     parser = argparse.ArgumentParser(prog="HomeAI", description="Home AI Assistant")
     parser.add_argument("--config", default="homeai.conf", help="Name of configuration file")
     parser.add_argument("--list_microphones", action="store_true", help="List available microphones")
     parser.add_argument("--microphone", help="Set name of microphone")
-    parser.add_argument("--log_level", default=0, type=int, choices=range(0, 3), help="Set level of log messages")
+    parser.add_argument("--log_level", default=0, type=int, choices=range(0, 4), help="Set level of log messages")
     parser.add_argument("--no_welcome", action="store_true", help="Do not play welcome message")
     parser.add_argument("--version", action="version", version='%(prog)s ' + VERSION)
     args = parser.parse_args()
@@ -420,7 +462,6 @@ def main():
     else:
         print("Using system default microphone")
     microphone = sr.Microphone(sample_rate=int(CONFIG['common']['sampleRate']), device_index=deviceIndex)
-    # microphone = sr.Microphone(sample_rate=CONFIG['common']['sampleRate'])
 
     # Setup recognizer
     recognizer = sr.Recognizer()
@@ -433,39 +474,47 @@ def main():
     else:
         recognizer.energy_threshold = CONFIG['common']['energyThreshold']
 
-    # Output welcome message
+    # Output welcome message. Will be cached in welcome.mp3
     if not args.no_welcome:
         textToSpeech(CONFIG['messages']['welcome'], "welcome")
+        playAudioFile("listening.wav")
 
     while True:
-        if listenForActivationWord(recognizer, microphone):
-            playAudioFile("listening.wav", background=True)
-            logMessage(2, "\n>>> Ask Open AI")
+        command = listenForActivationWord(recognizer, microphone)
+        if command == 'stop':
+            fadeOutAudio(1)
+        elif command == 'mute':
+            SOFT_MUTE = 1
+        elif command == 'unmute':
+            SOFT_MUTE = 0
+        elif command == CONFIG['common']['activationWord'].lower():
+            if not SOFT_MUTE:
+                playAudioFile("listening.wav", background=True)
+                logMessage(2, ">>> Ask Open AI")
 
-            prompt = listenForOpenAICommand(recognizer, microphone)
+                prompt = listenForOpenAICommand(recognizer, microphone)
 
-            if not prompt is None:
-                if prompt == CONFIG['common']['stopWord']:
-                    textToSpeech(CONFIG['messages']['shutdown'], "shutdown")
-                    logMessage(2, "Shutting down Home AI")
-                    sys.exit()
-                else:
+                if not errorOut(prompt):
                     try:
                         # Play sound until response from ChatGPT arrived and is converted to audio
                         playAudioFile("processing.wav", loops=-1, background=True)
                         
                         # Send query to Chat GPT and output response
                         response = askChatGPT(prompt)
-                        logMessage(2, response)
+                        logMessage(3, response)
                         fadeOutAudio(1)
-                        textToSpeech(response, "response", useCache=False)
+                        textToSpeech(response, "response", useCache=False, background=True)
 
                     except Exception:
-                        logMessage(0, "Generic error")
                         fadeOutAudio(1)
-                        textToSpeech(CONFIG['messages']['genericError'], "genericerror")
+                        errorOut("genericError")
+
             else:
-                logMessage(2, "No prompt received")
+                errorOut("muted")
+
+        elif not command is None:
+            if not errorOut(command):
+                logMessage(1, "Unknown command " + command)
 
 if __name__ == "__main__":
     main()
