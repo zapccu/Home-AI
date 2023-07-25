@@ -72,9 +72,6 @@ BYTES_PER_SAMPLE = 2        # Bytes per sample
 # Log details level
 LOG_LEVEL = 0               # 0 = Print errors only, 1 = Print some more information, 2 = Print debug information, 3 = Print detected words
 
-# Control commands
-COMMANDS = []
-
 # Mute OpenAI. 1 = Do not listen for OpenAI queries
 SOFT_MUTE = 0
 
@@ -119,7 +116,7 @@ def playAudioMessage(messageKey):
 # ############################################################################
 
 def readConfig(configFile):
-    global CONFIG, COMMANDS
+    global CONFIG
 
     try:
         if not os.path.isfile(configFile):
@@ -138,8 +135,6 @@ def readConfig(configFile):
 
         openai.api_key = CONFIG['OpenAI']['openAIKey']      
         CONFIG['messages']['welcome'] = CONFIG['messages']['welcome'].format(activationWord=CONFIG['common']['activationWord'])
-        COMMANDS = list(dict(CONFIG.items('commands')).values())
-        for commands
 
         return True
     
