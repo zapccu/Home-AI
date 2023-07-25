@@ -489,9 +489,6 @@ def main():
         playAudioMessage('welcome')
         playAudioFile("listening.wav")
 
-    pygame.mixer.init()
-    logMessage(2, "Current volume = " + str(pygame.mixer.music.get_volume()))
-
     while True:
         command = listenForActivationWord(recognizer, microphone)
         if command == 'stop':
@@ -533,6 +530,9 @@ def main():
         elif not command is None:
             if not errorOut(command):
                 logMessage(1, "Unknown command " + command)
+
+    # Play shutdown message
+    playAudioMessage('shutdown')
 
 if __name__ == "__main__":
     main()
