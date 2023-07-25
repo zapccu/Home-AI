@@ -39,7 +39,8 @@ CONFIG['common'] = {
 CONFIG['commands'] = {
     'stop': 'stop',
     'mute': 'mute',
-    'unmute': 'unmute'
+    'unmute': 'unmute',
+    'terminate': 'terminate'
 }
 CONFIG['Google'] = {
     'language': 'en-GB'
@@ -135,6 +136,10 @@ def readConfig(configFile):
 
         openai.api_key = CONFIG['OpenAI']['openAIKey']      
         CONFIG['messages']['welcome'] = CONFIG['messages']['welcome'].format(activationWord=CONFIG['common']['activationWord'])
+
+        logMessage(2, "Control commands:")
+        for controlWord,commandList in CONFIG.items('commands'):
+            logMessage(2, f"{controlWord}: {commandList}")
 
         return True
     
@@ -385,7 +390,7 @@ def textToSpeech(text, outputFile=None, useCache=True, background=False):
             logMessage(2, "Writing speech audio to file " + fileName)
             with open(fileName, 'wb') as f:
                 f.write(response['AudioStream'].read())
-        playAudioFile(fileName, background: background)
+        playAudioFile(fileName, background=background)
 
 
 # ############################################################################
@@ -484,14 +489,22 @@ def main():
         playAudioMessage('welcome')
         playAudioFile("listening.wav")
 
+    pygame.mixer.init()
+    logMessage(2, "Current volume = " + str(pygame.mixer.music.get_volume()))
+
     while True:
         command = listenForActivationWord(recognizer, microphone)
         if command == 'stop':
             fadeOutAudio(1)
         elif command == 'mute':
+            logMessage(2, "Muted")
             SOFT_MUTE = 1
         elif command == 'unmute':
+            logMessage(2, "Unmuted")
             SOFT_MUTE = 0
+        elif command == 'terminate':
+            logMessage(0, "Shutting down home-ai")
+            break
         elif command == CONFIG['common']['activationWord'].lower():
             if not SOFT_MUTE:
                 playAudioFile("listening.wav", background=True)
