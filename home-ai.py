@@ -66,7 +66,7 @@ CONFIG['messages'] = {
 }
 
 # Audio recording parameters
-READ_CHUNK       = 4096     # Chunk size for output of audio date >4K
+READ_CHUNK       = 4096     # Chunk size for output of audio data >4K
 CHANNELS         = 1        # Mono
 BYTES_PER_SAMPLE = 2        # Bytes per sample
 
@@ -153,6 +153,7 @@ def readConfig(configFile):
 
 # ############################################################################
 #  Save audio to file
+#
 #    audio: audio data
 #    name: absolute name of audio file
 # ############################################################################
@@ -239,21 +240,13 @@ def listenForOpenAICommand(recognizer, microphone):
 
         saveRecordedAudio(audio, recFile)
 
-        # try recognizing the speech in the recording
-        # if the speech is unintelligible, `UnknownValueError` will be thrown
-        audioFile = open(recFile, "rb")
-        text = openai.Audio.transcribe("whisper-1", audioFile, language=CONFIG['OpenAI']['openAILanguage'])
-        audioFile.close()
-
-        logMessage(3, text)
-        logMessage(3, text['text'])
-        command = text['text']
-
-        if command == "":
+        # Convert speech to text
+        prompt = speechToText(recFile)
+        if prompt == "":
             logMessage(1, "Couldn't understand the command")
             return 'didNotUnderstand'
-
-        return command
+        else:
+            return prompt
     
     except sr.UnknownValueError:
         logMessage(1, "Couldn't understand the command")
@@ -265,18 +258,40 @@ def listenForOpenAICommand(recognizer, microphone):
 
 
 # ############################################################################
+#  Convert speech to text with OpenAI Whisper
+# ############################################################################
+
+def speechToText(recFile):
+
+    audioFile = open(recFile, "rb")
+    text = openai.Audio.transcribe("whisper-1", audioFile, language=CONFIG['OpenAI']['openAILanguage'])
+    audioFile.close()
+
+    logMessage(3, text)
+    prompt = text['text']
+    logMessage(3, prompt)
+
+    return prompt
+
+
+# ############################################################################
 #  Ask Chat GPT
 # ############################################################################
 
 def askChatGPT(prompt):
 
     messages = [{"role": "user", "content": prompt}]
-    response = openai.ChatCompletion.create(model=CONFIG['OpenAI']['openAIModel'], messages=messages, temperature=0)
+    response = openai.ChatCompletion.create(
+        model=CONFIG['OpenAI']['openAIModel'],
+        messages=messages,
+        temperature=0
+    )
     return response.choices[0].message["content"]
 
 
 # ############################################################################
 #  Play an audio file
+#
 #    loops = -1: play endlessly
 #    loops = 0: play once
 # ############################################################################
@@ -338,14 +353,15 @@ def fadeOutAudio(duration):
 
 
 # ############################################################################
-#  Convert text to speech and play result
+#  Convert text to speech with AWS Polly and play result
 #
 #    outputFile: Name of temporary audio file. File will be created or is
 #       expected to be found in "audiofiles" directory. Name must be specified
 #       without file extension.
 #    useCache: Flag for using cached/existing file. Set it to False to force
 #       creation of a new audio file
-#    fadeOutAudio: Fade out already playing audio before playing speech
+#    background: Flag for playing audio in background. Is ignored if no
+#       outputFile is specified
 # ############################################################################
 
 def textToSpeech(text, outputFile=None, useCache=True, background=False):
@@ -367,7 +383,7 @@ def textToSpeech(text, outputFile=None, useCache=True, background=False):
         fileName = CONFIG['common']['audioFiles'] + "/" + outputFile + "." + format
 
     try:
-        # Convert text to stream
+        # Convert text to audio stream
         response = polly.synthesize_speech(
             Engine='standard',
             Text=text,
@@ -459,7 +475,6 @@ def main():
 
     LOG_LEVEL = int(args.log_level)
     print("Set log level to " + str(LOG_LEVEL))
-    print("LOG_LEVEL = ", LOG_LEVEL)
 
     # Read configuration
     if not readConfig(args.config):
@@ -490,8 +505,11 @@ def main():
         playAudioFile("listening.wav")
 
     while True:
+        # Listen for activation word
         command = listenForActivationWord(recognizer, microphone)
+
         if command == 'stop':
+            logMessage(2, "Stopping audio playback")
             fadeOutAudio(1)
         elif command == 'mute':
             logMessage(2, "Muted")
@@ -501,12 +519,16 @@ def main():
             SOFT_MUTE = 0
         elif command == 'terminate':
             logMessage(0, "Shutting down home-ai")
+            playAudioMessage('shutdown')
             break
         elif command == CONFIG['common']['activationWord'].lower():
-            if not SOFT_MUTE:
+            if SOFT_MUTE:
+                errorOut("muted")
+            else:
                 playAudioFile("listening.wav", background=True)
                 logMessage(2, ">>> Ask Open AI")
 
+                # Listen for ChatGPT query
                 prompt = listenForOpenAICommand(recognizer, microphone)
 
                 if not errorOut(prompt):
@@ -524,15 +546,10 @@ def main():
                         fadeOutAudio(1)
                         errorOut("genericError")
 
-            else:
-                errorOut("muted")
-
         elif not command is None:
             if not errorOut(command):
                 logMessage(1, "Unknown command " + command)
 
-    # Play shutdown message
-    playAudioMessage('shutdown')
 
 if __name__ == "__main__":
     main()
