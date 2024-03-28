@@ -27,9 +27,8 @@ speech_recognition
 sys
 wave
 
-## Configuration
+## Hardware setup (example)
 
-### Setting up the hardware
+The following hardware setup is using the case of a Magenta Voice Assistant 
 
-### Setting up Home-AI
-
+![Magenta Voice Assistant](Home-AI.jpg)
